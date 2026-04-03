@@ -229,7 +229,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float scale = 10.0;
     float noise = valueNoise(uv * scale);
 
-    fragColor = vec4(0.);
+    fragColor = vec4(vec3(noise), 1.0);
 }`;
 
 // CodeMirror: dùng direct constructor, KHÔNG dùng fromTextArea
