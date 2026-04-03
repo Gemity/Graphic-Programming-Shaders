@@ -2,6 +2,8 @@
 float rand(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 // Hàm fade cubic (Perlin-style)
+}
+
 vec2 fade(vec2 t) {
     return t * t * (3.0 - 2.0 * t);
 }
