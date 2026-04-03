@@ -4,481 +4,439 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GLSL Playground</title>
+
+<!-- CodeMirror 5 -->
+<link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg:       #0f1117;
-    --surface:  #1a1d27;
-    --border:   #2a2d3a;
-    --text:     #c9d1d9;
-    --muted:    #6e7681;
-    --accent:   #58a6ff;
-    --error:    #f85149;
-    --success:  #3fb950;
-    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    --font-ui:   system-ui, -apple-system, sans-serif;
-    --radius:    6px;
-  }
+:root {
+  --bg:      #0f1117;
+  --surface: #161b22;
+  --border:  #30363d;
+  --text:    #c9d1d9;
+  --muted:   #6e7681;
+  --accent:  #58a6ff;
+  --error:   #f85149;
+  --ok:      #3fb950;
+  --mono:    'JetBrains Mono', 'Fira Code', monospace;
+  --ui:      system-ui, -apple-system, sans-serif;
+}
 
-  html, body {
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-ui);
-    overflow: hidden;
-  }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--ui); overflow: hidden; }
 
-  /* ── LAYOUT ── */
-  #app {
-    display: grid;
-    grid-template-rows: 40px 1fr 28px;
-    height: 100vh;
-  }
+#app { display: flex; flex-direction: column; height: 100vh; }
 
-  /* ── TOOLBAR ── */
-  #toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    user-select: none;
-  }
+/* ── TOOLBAR: 3-zone grid ── */
+#toolbar {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 42px;
+  padding: 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+#toolbar-left  { display: flex; align-items: center; gap: 6px; }
+#toolbar-center { display: flex; align-items: center; gap: 6px; }
+#toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 
-  #title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    letter-spacing: .05em;
-    text-transform: uppercase;
-    flex: 1;
-  }
+#dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background .2s; }
+#dot.ok  { background: var(--ok); }
+#dot.err { background: var(--error); }
 
-  .tag {
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 99px;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    font-family: var(--font-mono);
-  }
+#compile-msg { font: 11px/1 var(--mono); color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#compile-msg.err { color: var(--error); }
+#compile-msg.ok  { color: var(--ok); }
 
-  .btn {
-    font-size: 12px;
-    font-family: var(--font-ui);
-    font-weight: 500;
-    padding: 4px 12px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
-    transition: background .15s, border-color .15s;
-  }
-  .btn:hover { background: rgba(255,255,255,.06); }
+.tag { font: 10px/1 var(--mono); padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
 
-  .btn-run {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #0d1117;
-    font-weight: 600;
-  }
-  .btn-run:hover { background: #79b8ff; border-color: #79b8ff; }
+.btn { font: 500 12px/1 var(--ui); padding: 5px 12px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; transition: background .12s; user-select: none; }
+.btn:hover { background: rgba(255,255,255,.08); }
+.btn:active { transform: scale(.97); }
 
-  /* ── MAIN SPLIT ── */
-  #main {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    overflow: hidden;
-  }
+.btn-run { background: var(--accent); border-color: var(--accent); color: #0d1117; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+.btn-run:hover { background: #79b8ff; border-color: #79b8ff; }
+.btn-run kbd { font: 10px/1 var(--mono); opacity: .6; font-weight: 400; }
 
-  /* ── EDITOR SIDE ── */
-  #editor-panel {
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--border);
-    overflow: hidden;
-    position: relative;
-  }
+/* ── SPLIT ── */
+#split { flex: 1; display: flex; min-height: 0; }
 
-  #editor-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--muted);
-    font-family: var(--font-mono);
-  }
+/* ── LEFT: Editor ── */
+#left { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); min-width: 0; min-height: 0; overflow: hidden; }
 
-  #dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-  #dot.ok  { background: var(--success); }
-  #dot.err { background: var(--error);   }
+#cm-wrap { flex: 1; min-height: 0; position: relative; }
 
-  #editor {
-    flex: 1;
-    width: 100%;
-    padding: 14px 16px;
-    font-size: 12.5px;
-    font-family: var(--font-mono);
-    line-height: 1.65;
-    color: var(--text);
-    background: var(--bg);
-    border: none;
-    outline: none;
-    resize: none;
-    tab-size: 4;
-    caret-color: var(--accent);
-  }
+.CodeMirror {
+  font-family: var(--mono) !important;
+  font-size: 13px !important;
+  line-height: 1.65 !important;
+  background: #0d1117 !important;
+  height: 100% !important;
+  color: #c9d1d9 !important;
+}
+.CodeMirror-scroll { overflow: auto !important; }
+.CodeMirror-gutters { background: #0d1117 !important; border-right: 1px solid var(--border) !important; }
+.CodeMirror-linenumber { color: #484f58 !important; }
+.CodeMirror-cursor { border-left-color: #58a6ff !important; }
+.CodeMirror-selected { background: rgba(56,139,253,.25) !important; }
+.CodeMirror-activeline-background { background: rgba(255,255,255,.04) !important; }
+.CodeMirror-matchingbracket { color: #79c0ff !important; text-decoration: underline; }
 
-  /* uniform hint overlay */
-  #uniforms-hint {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    padding: 6px 14px;
-    font-size: 10.5px;
-    font-family: var(--font-mono);
-    color: var(--muted);
-    background: linear-gradient(transparent, var(--bg) 40%);
-    pointer-events: none;
-  }
+/* ── Inline syntax theme (One Dark–inspired) ── */
+.cm-s-one-dark .CodeMirror-cursor,
+.CodeMirror .CodeMirror-cursor { border-left-color: #528bff !important; }
+/* keywords: void, float, vec2, vec3, vec4, in, out, return, if, for ... */
+.cm-keyword   { color: #ff7b72 !important; }
+/* types: float, int, vec2, mat4 ... */
+.cm-type      { color: #ffa657 !important; }
+/* built-in & defined functions */
+.cm-builtin   { color: #d2a8ff !important; }
+.cm-def        { color: #d2a8ff !important; }
+/* variables & plain identifiers */
+.cm-variable   { color: #c9d1d9 !important; }
+.cm-variable-2 { color: #ffa657 !important; }
+.cm-variable-3 { color: #79c0ff !important; }
+/* numbers */
+.cm-number    { color: #79c0ff !important; }
+/* strings */
+.cm-string    { color: #a5d6ff !important; }
+/* operators: + - * / = < > */
+.cm-operator  { color: #ff7b72 !important; }
+/* punctuation */
+.cm-punctuation { color: #c9d1d9 !important; }
+/* comments */
+.cm-comment   { color: #8b949e !important; font-style: italic; }
+/* preprocessor (#define, #version) */
+.cm-meta      { color: #ffa657 !important; }
+/* atoms: true, false, GL_* constants */
+.cm-atom      { color: #79c0ff !important; }
+/* qualifiers: uniform, varying, attribute */
+.cm-qualifier { color: #ff7b72 !important; }
+/* property access */
+.cm-property  { color: #79c0ff !important; }
 
-  /* ── PREVIEW SIDE ── */
-  #preview-panel {
-    position: relative;
-    background: #000;
-    overflow: hidden;
-  }
+#hint { flex-shrink: 0; padding: 5px 14px; font: 10.5px/1 var(--mono); color: var(--muted); background: var(--surface); border-top: 1px solid var(--border); }
+#hint span { color: #79b8ff; }
 
-  canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
+/* ── RIGHT: Square canvas ── */
+#right { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px; gap: 8px; background: var(--bg); }
 
-  #overlay {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,0,0,.7);
-    font-size: 13px;
-    font-family: var(--font-mono);
-    color: var(--error);
-    padding: 24px;
-    text-align: center;
-    white-space: pre-wrap;
-    word-break: break-word;
-    line-height: 1.6;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity .2s;
-  }
-  #overlay.show { opacity: 1; }
+#canvas-wrap {
+  position: relative;
+  height: calc(100vh - 42px - 26px - 24px);
+  aspect-ratio: 1 / 1;
+  max-height: 520px;
+  min-height: 180px;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
 
-  #fps {
-    position: absolute;
-    top: 10px; right: 12px;
-    font-size: 11px;
-    font-family: var(--font-mono);
-    color: rgba(255,255,255,.3);
-    pointer-events: none;
-  }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-  #pause-btn {
-    position: absolute;
-    bottom: 10px; right: 10px;
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    border: 1px solid rgba(255,255,255,.2);
-    background: rgba(0,0,0,.5);
-    color: rgba(255,255,255,.7);
-    font-size: 13px;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background .15s;
-  }
-  #pause-btn:hover { background: rgba(0,0,0,.8); }
+#fps { position: absolute; top: 7px; right: 9px; font: 11px/1 var(--mono); color: rgba(255,255,255,.22); pointer-events: none; }
 
-  /* ── STATUSBAR ── */
-  #statusbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 14px;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    font-size: 11px;
-    font-family: var(--font-mono);
-    color: var(--muted);
-    overflow: hidden;
-  }
-  #status-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #status-msg.err { color: var(--error); }
-  #status-msg.ok  { color: var(--success); }
-  #time-display { flex-shrink: 0; }
+#pause-btn { position: absolute; bottom: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.55); color: rgba(255,255,255,.65); font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .12s; }
+#pause-btn:hover { background: rgba(0,0,0,.85); }
+
+#err-overlay { position: absolute; inset: 0; display: flex; align-items: flex-start; background: rgba(0,0,0,.85); color: var(--error); font: 11px/1.6 var(--mono); padding: 14px; white-space: pre-wrap; word-break: break-word; overflow-y: auto; opacity: 0; pointer-events: none; transition: opacity .2s; }
+#err-overlay.show { opacity: 1; pointer-events: auto; }
+
+#canvas-info { display: flex; gap: 14px; font: 11px/1 var(--mono); color: var(--muted); }
 </style>
 </head>
 <body>
 <div id="app">
 
-  <!-- TOOLBAR -->
   <div id="toolbar">
-    <span id="title">GLSL Playground</span>
-    <span class="tag">fragment</span>
-    <button class="btn" id="btn-reset">Reset</button>
-    <button class="btn" id="btn-copy">Copy GLSL</button>
-    <button class="btn btn-run" id="btn-run">▶ Run  <kbd style="font-size:10px;opacity:.7">Ctrl+↵</kbd></button>
+    <div id="toolbar-left">
+      <div id="dot"></div>
+      <span id="compile-msg">ready</span>
+    </div>
+    <div id="toolbar-center">
+      <span class="tag">GLSL</span>
+      <button class="btn" id="btn-reset">Reset</button>
+      <button class="btn" id="btn-copy">Copy</button>
+      <button class="btn btn-run" id="btn-run">&#9654; Run <kbd>Ctrl+&#8629;</kbd></button>
+    </div>
+    <div id="toolbar-right">
+      <span id="info-time" style="font:11px/1 var(--mono);color:var(--muted)">t = 0.000s</span>
+    </div>
   </div>
 
-  <!-- MAIN -->
-  <div id="main">
-
-    <!-- EDITOR -->
-    <div id="editor-panel">
-      <div id="editor-header">
-        <div id="dot"></div>
-        <span id="compile-status">ready</span>
+  <div id="split">
+    <div id="left">
+      <div id="cm-wrap">
       </div>
-      <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
-      <div id="uniforms-hint">
-        uniforms: <span style="color:#79b8ff">iTime</span> · <span style="color:#79b8ff">iResolution</span> · <span style="color:#79b8ff">iMouse</span>
+      <div id="hint">uniforms &rarr; <span>iTime</span> &nbsp; <span>iResolution</span> &nbsp; <span>iMouse</span></div>
+    </div>
+    <div id="right">
+      <div id="canvas-wrap">
+        <canvas id="glcanvas"></canvas>
+        <div id="fps">-- fps</div>
+        <div id="err-overlay"></div>
+        <button id="pause-btn" title="Pause / Resume">&#9646;&#9646;</button>
+      </div>
+      <div id="canvas-info">
+        <span id="info-res">-- x --</span>
       </div>
     </div>
-
-    <!-- PREVIEW -->
-    <div id="preview-panel">
-      <canvas id="glcanvas"></canvas>
-      <div id="fps">-- fps</div>
-      <div id="overlay"></div>
-      <button id="pause-btn" title="Pause/Resume">⏸</button>
-    </div>
-
-  </div>
-
-  <!-- STATUSBAR -->
-  <div id="statusbar">
-    <span id="status-msg">Nhấn ▶ Run hoặc Ctrl+Enter để compile</span>
-    <span id="time-display">t = 0.000s</span>
   </div>
 
 </div>
-
 <script>
-// ── DEFAULT SHADER ──────────────────────────────────────────────────────────
-// Thay nội dung này cho từng chương
-const DEFAULT_SHADER = `// Chương 1 — White Noise
-// Mỗi pixel cho ra giá trị ngẫu nhiên độc lập
-
+const DEFAULT_SHADER = `// Value Noise 2D
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
+float fade(float t) {
+    return t * t * (3.0 - 2.0 * t);
+}
+
+float valueNoise(vec2 uv) {
+    vec2 i = floor(uv);
+    vec2 f = fract(uv);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    vec2  u = vec2(fade(f.x), fade(f.y));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord.xy / iResolution.xy;
-
-    float n = hash(uv * 500.0 + floor(iTime * 30.0));
-
-    fragColor = vec4(vec3(n), 1.0);
+    vec2 p  = uv * 6.0 + iTime * 0.15;
+    float n = valueNoise(p);
+    vec3 col = mix(vec3(0.05, 0.08, 0.18), vec3(0.25, 0.75, 0.65), n);
+    fragColor = vec4(col, 1.0);
 }`;
 
-// ── WEBGL BOOTSTRAP ─────────────────────────────────────────────────────────
-const VS_SRC = `attribute vec2 a_pos;
-void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+// CodeMirror: dùng direct constructor, KHÔNG dùng fromTextArea
+// fromTextArea init ngay khi script chạy → container chưa có height → màn đen
+// Direct constructor + setSize() được gọi sau khi DOM layout hoàn tất
+const cmWrap = document.getElementById('cm-wrap');
 
-function wrapFS(userSrc) {
-  return `precision highp float;
-uniform float     iTime;
-uniform vec2      iResolution;
-uniform vec2      iMouse;
-${userSrc}
-void main() { mainImage(gl_FragColor, gl_FragCoord.xy); }`;
-}
-
-const canvas  = document.getElementById('glcanvas');
-const editor  = document.getElementById('editor');
-const overlay = document.getElementById('overlay');
-const dot     = document.getElementById('dot');
-const cStatus = document.getElementById('compile-status');
-const statusEl= document.getElementById('status-msg');
-const fpsEl   = document.getElementById('fps');
-const timeEl  = document.getElementById('time-display');
-const pauseBtn= document.getElementById('pause-btn');
-
-const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-if (!gl) { statusEl.textContent = 'WebGL not supported'; statusEl.className = 'err'; }
-
-editor.value = DEFAULT_SHADER;
-
-let prog = null, animId = null;
-let startTime = performance.now(), pausedAt = 0, paused = false;
-let mouseX = 0, mouseY = 0;
-let fpsFrames = 0, fpsLast = 0;
-
-// track mouse
-canvas.addEventListener('mousemove', e => {
-  const r = canvas.getBoundingClientRect();
-  const dpr = devicePixelRatio || 1;
-  mouseX = (e.clientX - r.left) * dpr;
-  mouseY = canvas.height - (e.clientY - r.top) * dpr;
+// Register GLSL mode based on clike
+CodeMirror.defineMIME("text/x-glsl", {
+  name: "clike",
+  keywords: (function(){
+    var kw = {};
+    ["break","continue","discard","do","else","for","if","return","while",
+     "switch","case","default","in","out","inout","uniform","varying",
+     "attribute","const","flat","smooth","centroid","invariant","precise",
+     "layout","shared","coherent","volatile","restrict","readonly","writeonly",
+     "struct","subroutine","precision","highp","mediump","lowp"].forEach(function(w){kw[w]=true;});
+    return kw;
+  })(),
+  types: (function(){
+    var t = {};
+    ["void","bool","int","uint","float","double",
+     "vec2","vec3","vec4","dvec2","dvec3","dvec4",
+     "bvec2","bvec3","bvec4","ivec2","ivec3","ivec4","uvec2","uvec3","uvec4",
+     "mat2","mat3","mat4","mat2x2","mat2x3","mat2x4","mat3x2","mat3x3","mat3x4","mat4x2","mat4x3","mat4x4",
+     "sampler1D","sampler2D","sampler3D","samplerCube","sampler2DShadow",
+     "sampler2DArray","samplerCubeArray","isampler2D","usampler2D"].forEach(function(w){t[w]=true;});
+    return t;
+  })(),
+  builtin: (function(){
+    var b = {};
+    ["radians","degrees","sin","cos","tan","asin","acos","atan",
+     "pow","exp","log","exp2","log2","sqrt","inversesqrt",
+     "abs","sign","floor","ceil","fract","mod","min","max","clamp",
+     "mix","step","smoothstep","length","distance","dot","cross",
+     "normalize","faceforward","reflect","refract",
+     "matrixCompMult","transpose","inverse","determinant",
+     "lessThan","lessThanEqual","greaterThan","greaterThanEqual","equal","notEqual",
+     "any","all","not","texture","texture2D","textureCube","texture2DProj",
+     "texelFetch","textureSize","dFdx","dFdy","fwidth",
+     "gl_FragCoord","gl_FragColor","gl_Position","gl_PointSize",
+     "mainImage"].forEach(function(w){b[w]=true;});
+    return b;
+  })(),
+  blockKeywords: (function(){
+    var bk = {};
+    ["for","while","do","if","else","switch","case","struct"].forEach(function(w){bk[w]=true;});
+    return bk;
+  })(),
+  atoms: (function(){
+    var a = {};
+    ["true","false","GL_ES","GL_FRAGMENT_PRECISION_HIGH"].forEach(function(w){a[w]=true;});
+    return a;
+  })(),
+  hooks: {
+    "#": function(c) { c.skipToEnd(); return "meta"; }
+  },
+  modeProps: { fold: ["brace"] }
 });
 
-// ── COMPILER ────────────────────────────────────────────────────────────────
-function compileShader(type, src) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(s);
-    gl.deleteShader(s);
-    throw log;
+const cm = CodeMirror(cmWrap, {
+  value: DEFAULT_SHADER,
+  mode: 'text/x-glsl',
+  theme: 'one-dark',
+  lineNumbers: true,
+  indentUnit: 4,
+  tabSize: 4,
+  indentWithTabs: false,
+  matchBrackets: true,
+  lineWrapping: false,
+  autofocus: true,
+  extraKeys: {
+    'Ctrl-Enter': () => run(cm.getValue()),
+    'Cmd-Enter':  () => run(cm.getValue()),
+    Tab: c => { if (c.somethingSelected()) c.indentSelection('add'); else c.replaceSelection('    ', 'end'); }
   }
+});
+// setSize sau khi layout xong — lấy height thực của wrapper
+function fitEditor() {
+  const h = cmWrap.clientHeight;
+  if (h > 0) {
+    cm.setSize('100%', h);
+    cm.refresh();
+  }
+}
+
+// WebGL
+const VS = `attribute vec2 a;\nvoid main(){gl_Position=vec4(a,0,1);}`;
+const wrapFS = src => `precision highp float;\nuniform float iTime;\nuniform vec2 iResolution;\nuniform vec2 iMouse;\n${src}\nvoid main(){mainImage(gl_FragColor,gl_FragCoord.xy);}`;
+
+const canvas   = document.getElementById('glcanvas');
+const dot      = document.getElementById('dot');
+const cMsg     = document.getElementById('compile-msg');
+const errOvl   = document.getElementById('err-overlay');
+const fpsEl    = document.getElementById('fps');
+const timeEl   = document.getElementById('info-time');
+const resEl    = document.getElementById('info-res');
+const pauseBtn = document.getElementById('pause-btn');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+let prog=null, raf=null, t0=performance.now(), pauseOffset=0, paused=false;
+let mx=0, my=0, frames=0, fpsT=0;
+
+canvas.addEventListener('mousemove', e => {
+  const r=canvas.getBoundingClientRect(), dpr=devicePixelRatio||1;
+  mx=(e.clientX-r.left)*dpr; my=canvas.height-(e.clientY-r.top)*dpr;
+});
+
+function makeShader(type,src){
+  const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){const e=gl.getShaderInfoLog(s);gl.deleteShader(s);throw e;}
   return s;
 }
-
-function buildProgram(fsSrc) {
-  const vs = compileShader(gl.VERTEX_SHADER, VS_SRC);
-  const fs = compileShader(gl.FRAGMENT_SHADER, wrapFS(fsSrc));
-  const p  = gl.createProgram();
-  gl.attachShader(p, vs); gl.attachShader(p, fs);
-  gl.linkProgram(p);
+function makeProgram(fsSrc){
+  const vs=makeShader(gl.VERTEX_SHADER,VS), fs=makeShader(gl.FRAGMENT_SHADER,wrapFS(fsSrc));
+  const p=gl.createProgram(); gl.attachShader(p,vs); gl.attachShader(p,fs); gl.linkProgram(p);
   gl.deleteShader(vs); gl.deleteShader(fs);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
   return p;
 }
-
-function initQuad(p) {
-  const buf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(p, 'a_pos');
-  gl.enableVertexAttribArray(loc);
-  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+function initQuad(p){
+  const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(p,'a'); gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
 }
-
-// ── RESIZE ──────────────────────────────────────────────────────────────────
-function resize() {
-  const dpr = devicePixelRatio || 1;
-  const r   = canvas.getBoundingClientRect();
-  canvas.width  = (r.width  * dpr) | 0;
-  canvas.height = (r.height * dpr) | 0;
-  gl.viewport(0, 0, canvas.width, canvas.height);
+function resize(){
+  const dpr=devicePixelRatio||1;
+  canvas.width=(canvas.clientWidth*dpr)|0; canvas.height=(canvas.clientHeight*dpr)|0;
+  gl.viewport(0,0,canvas.width,canvas.height);
+  resEl.textContent=canvas.width+' x '+canvas.height;
 }
-window.addEventListener('resize', () => prog && resize());
+new ResizeObserver(()=>{if(prog)resize();}).observe(document.getElementById('canvas-wrap'));
 
-// ── RUN SHADER ──────────────────────────────────────────────────────────────
-function runShader(code) {
-  if (animId) { cancelAnimationFrame(animId); animId = null; }
-  overlay.classList.remove('show');
-
-  try {
-    if (prog) gl.deleteProgram(prog);
-    prog = buildProgram(code);
-    initQuad(prog);
-    resize();
-    startTime = performance.now() - pausedAt;
-    paused = false;
-    pauseBtn.textContent = '⏸';
-
-    dot.className = 'ok';
-    cStatus.textContent = 'compiled ok';
-    setStatus('Compiled successfully', 'ok');
+function run(code){
+  if(raf){cancelAnimationFrame(raf);raf=null;}
+  errOvl.classList.remove('show');
+  try{
+    if(prog) gl.deleteProgram(prog);
+    prog=makeProgram(code); initQuad(prog); resize();
+    t0=performance.now()-pauseOffset; paused=false;
+    pauseBtn.innerHTML='&#9646;&#9646;';
+    dot.className='ok'; cMsg.className='ok'; cMsg.textContent='compiled ok';
     loop();
-  } catch (rawErr) {
-    prog = null;
-    // clean up error — strip wrapper line offset
-    const cleaned = String(rawErr)
-      .replace(/ERROR: \d+:(\d+):/g, (_, ln) => {
-        const real = parseInt(ln) - 6; // offset from wrapFS header lines
-        return `ERROR line ${real > 0 ? real : ln}:`;
-      })
-      .trim();
-
-    dot.className = 'err';
-    cStatus.textContent = 'compile error';
-    setStatus(cleaned, 'err');
-    overlay.textContent = cleaned;
-    overlay.classList.add('show');
+  }catch(raw){
+    prog=null;
+    const msg=String(raw).replace(/ERROR: \d+:(\d+):/g,(_,n)=>'line '+Math.max(+n-5,1)+':').trim();
+    dot.className='err'; cMsg.className='err'; cMsg.textContent='compile error';
+    errOvl.textContent=msg; errOvl.classList.add('show');
   }
 }
-
-// ── RENDER LOOP ─────────────────────────────────────────────────────────────
-function loop() {
-  animId = requestAnimationFrame(loop);
-  if (!prog) return;
-
-  const now = performance.now();
-  const t   = (now - startTime) / 1000;
-
-  // fps counter
-  fpsFrames++;
-  if (now - fpsLast > 1000) {
-    fpsEl.textContent = fpsFrames + ' fps';
-    fpsFrames = 0; fpsLast = now;
-  }
-
-  timeEl.textContent = 't = ' + t.toFixed(3) + 's';
-
+function loop(){
+  raf=requestAnimationFrame(loop); if(!prog) return;
+  const now=performance.now(), t=(now-t0)/1000;
+  frames++; if(now-fpsT>=1000){fpsEl.textContent=frames+' fps';frames=0;fpsT=now;}
+  timeEl.textContent='t = '+t.toFixed(3)+'s';
   gl.useProgram(prog);
-  gl.uniform1f(gl.getUniformLocation(prog, 'iTime'),       t);
-  gl.uniform2f(gl.getUniformLocation(prog, 'iResolution'), canvas.width, canvas.height);
-  gl.uniform2f(gl.getUniformLocation(prog, 'iMouse'),      mouseX, mouseY);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.uniform1f(gl.getUniformLocation(prog,'iTime'),t);
+  gl.uniform2f(gl.getUniformLocation(prog,'iResolution'),canvas.width,canvas.height);
+  gl.uniform2f(gl.getUniformLocation(prog,'iMouse'),mx,my);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 }
 
-// ── HELPERS ─────────────────────────────────────────────────────────────────
-function setStatus(msg, cls = '') {
-  statusEl.textContent = msg;
-  statusEl.className = cls;
-}
-
-function togglePause() {
-  if (!prog) return;
-  paused = !paused;
-  if (paused) {
-    pausedAt = performance.now() - startTime;
-    cancelAnimationFrame(animId); animId = null;
-    pauseBtn.textContent = '▶';
-    setStatus('Paused', '');
+document.getElementById('btn-run').onclick   = ()=>run(cm.getValue());
+document.getElementById('btn-reset').onclick = ()=>{cm.setValue(DEFAULT_SHADER);run(DEFAULT_SHADER);};
+document.getElementById('btn-copy').onclick  = ()=>{
+  // Clipboard API bị block trong Notion iframe → fallback execCommand
+  const text = cm.getValue();
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text)
+      .then(()=>showCopied())
+      .catch(()=>fallbackCopy(text));
   } else {
-    startTime = performance.now() - pausedAt;
-    pauseBtn.textContent = '⏸';
-    setStatus('Running', 'ok');
-    loop();
+    fallbackCopy(text);
   }
+};
+function showCopied(){
+  const btn = document.getElementById('btn-copy');
+  btn.textContent = '✓ Copied';
+  btn.style.color = 'var(--ok)';
+  setTimeout(()=>{ btn.textContent='Copy'; btn.style.color=''; }, 1800);
+}
+function fallbackCopy(text){
+  // Tạo textarea tạm, select all, execCommand('copy')
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try {
+    document.execCommand('copy');
+    showCopied();
+  } catch(e) {
+    // Nếu cả 2 cách đều fail, select text trong editor để user tự copy
+    cm.execCommand('selectAll');
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'Select All ↑';
+    setTimeout(()=>{ btn.textContent='Copy'; }, 2500);
+  }
+  document.body.removeChild(ta);
 }
 
-// ── CONTROLS ────────────────────────────────────────────────────────────────
-document.getElementById('btn-run').onclick   = () => runShader(editor.value);
-document.getElementById('btn-reset').onclick = () => { editor.value = DEFAULT_SHADER; runShader(DEFAULT_SHADER); };
-document.getElementById('btn-copy').onclick  = () => {
-  navigator.clipboard.writeText(editor.value).then(() => setStatus('Copied!', 'ok'));
+pauseBtn.onclick=()=>{
+  if(!prog) return; paused=!paused;
+  if(paused){pauseOffset=performance.now()-t0;cancelAnimationFrame(raf);raf=null;pauseBtn.innerHTML='&#9654;';}
+  else{t0=performance.now()-pauseOffset;pauseBtn.innerHTML='&#9646;&#9646;';loop();}
 };
-pauseBtn.onclick = togglePause;
 
-editor.addEventListener('keydown', e => {
-  // Ctrl+Enter = run
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    e.preventDefault();
-    runShader(editor.value);
-    return;
-  }
-  // Tab = 4 spaces
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    const s = editor.selectionStart, en = editor.selectionEnd;
-    editor.value = editor.value.slice(0, s) + '    ' + editor.value.slice(en);
-    editor.selectionStart = editor.selectionEnd = s + 4;
-  }
+// Boot sau khi layout hoàn tất
+requestAnimationFrame(()=>{
+  fitEditor();
+  run(DEFAULT_SHADER);
+  // ResizeObserver để giữ editor đúng kích thước khi resize window
+  new ResizeObserver(fitEditor).observe(cmWrap);
+  // Fallback refresh — some browsers need a second tick after first paint
+  setTimeout(()=>{ fitEditor(); cm.refresh(); }, 100);
+  setTimeout(()=>{ fitEditor(); cm.refresh(); }, 500);
 });
-
-// auto-run on load
-runShader(DEFAULT_SHADER);
 </script>
 </body>
 </html>
