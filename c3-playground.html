@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GLSL Playground</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--surface:#161b22;--border:#30363d;
+  --text:#c9d1d9;--muted:#6e7681;--accent:#58a6ff;
+  --error:#f85149;--ok:#3fb950;
+  --mono:'JetBrains Mono','Fira Code',monospace;
+  --ui:system-ui,-apple-system,sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--ui);overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* ── TOOLBAR ── */
+#toolbar{
+  flex-shrink:0;display:grid;grid-template-columns:1fr auto 1fr;
+  align-items:center;height:42px;padding:0 12px;
+  background:var(--surface);border-bottom:1px solid var(--border)
+}
+#toolbar-left{display:flex;align-items:center;gap:6px}
+#toolbar-center{display:flex;align-items:center;gap:6px}
+#toolbar-right{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+#dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .2s}
+#dot.ok{background:var(--ok)}
+#dot.err{background:var(--error)}
+#compile-msg{font:11px/1 var(--mono);color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#compile-msg.err{color:var(--error)}
+#compile-msg.ok{color:var(--ok)}
+.tag{font:10px/1 var(--mono);padding:2px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted)}
+.btn{font:500 12px/1 var(--ui);padding:5px 12px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;white-space:nowrap;transition:background .12s;user-select:none}
+.btn:hover{background:rgba(255,255,255,.08)}
+.btn:active{transform:scale(.97)}
+.btn-run{background:var(--accent);border-color:var(--accent);color:#0d1117;font-weight:700;display:flex;align-items:center;gap:5px}
+.btn-run:hover{background:#79b8ff;border-color:#79b8ff}
+.btn-run kbd{font:10px/1 var(--mono);opacity:.6;font-weight:400}
+
+/* ── SPLIT với drag resize ── */
+#split{flex:1;display:flex;min-height:0;position:relative}
+
+/* ── LEFT: Editor ── */
+#left{display:flex;flex-direction:column;min-width:120px;min-height:0;overflow:hidden;border-right:1px solid var(--border)}
+#cm-wrap{flex:1;min-height:0;overflow:hidden}
+#hint{flex-shrink:0;padding:5px 14px;font:10.5px/1 var(--mono);color:var(--muted);background:var(--surface);border-top:1px solid var(--border)}
+#hint span{color:#79b8ff}
+
+/* CodeMirror */
+.CodeMirror{font-family:var(--mono)!important;font-size:13px!important;line-height:1.65!important;background:#0d1117!important;color:#c9d1d9!important}
+.CodeMirror-scroll{overflow:auto!important}
+.CodeMirror-gutters{background:#0d1117!important;border-right:1px solid var(--border)!important}
+.CodeMirror-linenumber{color:#484f58!important}
+.CodeMirror-cursor{border-left-color:#58a6ff!important}
+.CodeMirror-selected{background:rgba(56,139,253,.25)!important}
+.CodeMirror-activeline-background{background:rgba(255,255,255,.04)!important}
+.cm-keyword{color:#ff7b72!important}
+.cm-type{color:#ffa657!important}
+.cm-builtin,.cm-def{color:#d2a8ff!important}
+.cm-variable{color:#c9d1d9!important}
+.cm-variable-2{color:#ffa657!important}
+.cm-variable-3{color:#79c0ff!important}
+.cm-number{color:#79c0ff!important}
+.cm-operator{color:#ff7b72!important}
+.cm-comment{color:#8b949e!important;font-style:italic}
+.cm-meta{color:#ffa657!important}
+.cm-atom{color:#79c0ff!important}
+.cm-qualifier{color:#ff7b72!important}
+.cm-property{color:#79c0ff!important}
+
+/* ── DIVIDER kéo được ── */
+#divider{
+  flex-shrink:0;width:5px;cursor:col-resize;
+  background:var(--border);
+  position:relative;z-index:10;
+  transition:background .15s;
+  user-select:none;
+}
+#divider:hover,#divider.dragging{background:var(--accent)}
+#divider::after{
+  content:'';position:absolute;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:1px;height:32px;
+  background:var(--muted);
+  border-radius:1px;
+}
+
+/* ── RIGHT: Square canvas ── */
+#right{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;gap:8px;background:var(--bg);min-width:120px;overflow:hidden}
+#canvas-wrap{
+  position:relative;
+  background:#000;border:1px solid var(--border);
+  border-radius:4px;overflow:hidden;flex-shrink:0;
+}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#fps{position:absolute;top:7px;right:9px;font:11px/1 var(--mono);color:rgba(255,255,255,.22);pointer-events:none}
+#pause-btn{position:absolute;bottom:8px;right:8px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.55);color:rgba(255,255,255,.65);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s}
+#pause-btn:hover{background:rgba(0,0,0,.85)}
+#err-overlay{position:absolute;inset:0;display:flex;align-items:flex-start;background:rgba(0,0,0,.85);color:var(--error);font:11px/1.6 var(--mono);padding:14px;white-space:pre-wrap;word-break:break-word;overflow-y:auto;opacity:0;pointer-events:none;transition:opacity .2s}
+#err-overlay.show{opacity:1;pointer-events:auto}
+#canvas-info{display:flex;gap:14px;font:11px/1 var(--mono);color:var(--muted)}
+
+/* loading state */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;font:13px/1 var(--mono);color:var(--muted);z-index:999}
+</style>
+</head>
+<body>
+<div id="loading">loading shader...</div>
+<div id="app" style="visibility:hidden">
+  <div id="toolbar">
+    <div id="toolbar-left">
+      <div id="dot"></div>
+      <span id="compile-msg">loading...</span>
+    </div>
+    <div id="toolbar-center">
+      <span class="tag">GLSL</span>
+      <button class="btn" id="btn-reset">Reset</button>
+      <button class="btn" id="btn-copy">Copy</button>
+      <button class="btn btn-run" id="btn-run">&#9654; Run <kbd>Ctrl+&#8629;</kbd></button>
+    </div>
+    <div id="toolbar-right">
+      <span id="info-time" style="font:11px/1 var(--mono);color:var(--muted)">t = 0.000s</span>
+    </div>
+  </div>
+  <div id="split">
+    <div id="left">
+      <div id="cm-wrap"></div>
+      <div id="hint">uniforms &rarr; <span>iTime</span> &nbsp; <span>iResolution</span> &nbsp; <span>iMouse</span></div>
+    </div>
+    <div id="divider" title="Kéo để resize"></div>
+    <div id="right">
+      <div id="canvas-wrap">
+        <canvas id="glcanvas"></canvas>
+        <div id="fps">-- fps</div>
+        <div id="err-overlay"></div>
+        <button id="pause-btn" title="Pause / Resume">&#9646;&#9646;</button>
+      </div>
+      <div id="canvas-info"><span id="info-res">-- x --</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════
+   CONFIG — chỉ thay 1 dòng này cho từng chương
+   Đường dẫn tương đối đến file .glsl cùng thư mục
+════════════════════════════════════════════════ */
+const SHADER_FILE = 'c3-glsl.glsl';
+
+/* ════════════════════════════════════════════════
+   FETCH SHADER FILE
+   Nếu chạy local (file://) thì fetch bị block CORS
+   → dùng một fallback string nhỏ để dev offline
+════════════════════════════════════════════════ */
+const FALLBACK_SHADER = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord.xy / iResolution.xy;
+    vec3 col = vec3(uv, 0.5 + 0.5 * sin(iTime));
+    fragColor = vec4(col, 1.0);
+}`;
+
+async function loadShader() {
+  try {
+    const res = await fetch(SHADER_FILE);
+    if (!res.ok) throw new Error('fetch failed');
+    return await res.text();
+  } catch(e) {
+    console.warn('Cannot fetch shader file, using fallback. Deploy to server to load .glsl files.');
+    return FALLBACK_SHADER;
+  }
+}
+
+/* ════════════════════════════════════════════════
+   REGISTER GLSL MODE (full keyword list)
+════════════════════════════════════════════════ */
+CodeMirror.defineMIME('text/x-glsl', {
+  name: 'clike',
+  keywords: (function(){
+    var k={};
+    ['break','continue','discard','do','else','for','if','return','while',
+     'switch','case','default','in','out','inout','uniform','varying',
+     'attribute','const','flat','smooth','centroid','invariant','precise',
+     'layout','shared','coherent','volatile','restrict','readonly','writeonly',
+     'struct','subroutine','precision','highp','mediump','lowp'
+    ].forEach(w=>k[w]=true); return k;
+  })(),
+  types: (function(){
+    var t={};
+    ['void','bool','int','uint','float','double',
+     'vec2','vec3','vec4','dvec2','dvec3','dvec4',
+     'bvec2','bvec3','bvec4','ivec2','ivec3','ivec4','uvec2','uvec3','uvec4',
+     'mat2','mat3','mat4','mat2x2','mat2x3','mat2x4','mat3x2','mat3x3','mat3x4','mat4x2','mat4x3','mat4x4',
+     'sampler1D','sampler2D','sampler3D','samplerCube','sampler2DShadow',
+     'sampler2DArray','samplerCubeArray','isampler2D','usampler2D'
+    ].forEach(w=>t[w]=true); return t;
+  })(),
+  builtin: (function(){
+    var b={};
+    ['radians','degrees','sin','cos','tan','asin','acos','atan',
+     'pow','exp','log','exp2','log2','sqrt','inversesqrt',
+     'abs','sign','floor','ceil','fract','mod','min','max','clamp',
+     'mix','step','smoothstep','length','distance','dot','cross',
+     'normalize','faceforward','reflect','refract',
+     'matrixCompMult','transpose','inverse','determinant',
+     'lessThan','lessThanEqual','greaterThan','greaterThanEqual','equal','notEqual',
+     'any','all','not','texture','texture2D','textureCube','texture2DProj',
+     'texelFetch','textureSize','dFdx','dFdy','fwidth',
+     'gl_FragCoord','gl_FragColor','gl_Position','gl_PointSize','mainImage'
+    ].forEach(w=>b[w]=true); return b;
+  })(),
+  blockKeywords: (function(){
+    var bk={};
+    ['for','while','do','if','else','switch','case','struct'].forEach(w=>bk[w]=true); return bk;
+  })(),
+  atoms: (function(){
+    var a={};
+    ['true','false','GL_ES','GL_FRAGMENT_PRECISION_HIGH'].forEach(w=>a[w]=true); return a;
+  })(),
+  hooks:{'#':c=>{c.skipToEnd();return 'meta';}},
+  modeProps:{fold:['brace']}
+});
+
+/* ════════════════════════════════════════════════
+   MAIN — chờ shader load xong mới init
+════════════════════════════════════════════════ */
+loadShader().then(DEFAULT_SHADER => {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.visibility = 'visible';
+
+  /* ── CodeMirror ── */
+  const cmWrap = document.getElementById('cm-wrap');
+  const cm = CodeMirror(cmWrap, {
+    value: DEFAULT_SHADER,
+    mode: 'text/x-glsl',
+    theme: 'one-dark',
+    lineNumbers: true,
+    indentUnit: 4, tabSize: 4,
+    indentWithTabs: false,
+    matchBrackets: true,
+    lineWrapping: false,
+    autofocus: true,
+    extraKeys: {
+      'Ctrl-Enter': () => run(cm.getValue()),
+      'Cmd-Enter':  () => run(cm.getValue()),
+      Tab: c => { if(c.somethingSelected()) c.indentSelection('add'); else c.replaceSelection('    ','end'); }
+    }
+  });
+
+  function fitEditor() {
+    const h = cmWrap.clientHeight;
+    if (h > 0) { cm.setSize('100%', h); cm.refresh(); }
+  }
+
+  /* ── DRAG RESIZE ── */
+  const split   = document.getElementById('split');
+  const left    = document.getElementById('left');
+  const right   = document.getElementById('right');
+  const divider = document.getElementById('divider');
+
+  // Default: editor 50%
+  left.style.width = '50%';
+  left.style.flexShrink = '0';
+
+  const canvasWrap = document.getElementById('canvas-wrap');
+
+  // fitCanvas: đọc width của #right SAU reflow (rAF đảm bảo layout đã settle)
+  function fitCanvas() {
+    requestAnimationFrame(() => {
+      const rightW = right.clientWidth;
+      const splitH = split.clientHeight;
+      const maxByW = rightW - 24;   // trừ padding 12*2
+      const maxByH = splitH - 52;   // trừ padding + canvas-info
+      const size   = Math.max(80, Math.min(maxByW, maxByH));
+      canvasWrap.style.width  = size + 'px';
+      canvasWrap.style.height = size + 'px';
+      if (prog) resize();
+    });
+  }
+
+  // ResizeObserver trên #right — trigger mỗi khi width thực sự thay đổi
+  // Đây là cách đáng tin cậy hơn đọc clientWidth trong mousemove
+  new ResizeObserver(fitCanvas).observe(right);
+
+  let dragging = false, startX = 0, startW = 0;
+
+  divider.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = left.offsetWidth;
+    divider.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const shield = document.createElement('div');
+    shield.id = 'drag-shield';
+    shield.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize';
+    document.body.appendChild(shield);
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const totalW = split.clientWidth - divider.offsetWidth;
+    const newW   = Math.max(120, Math.min(startW + (e.clientX - startX), totalW - 120));
+    left.style.width = newW + 'px';
+    fitEditor();
+    // fitCanvas sẽ tự trigger qua ResizeObserver trên #right
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    divider.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    const shield = document.getElementById('drag-shield');
+    if (shield) shield.remove();
+    fitEditor();
+  });
+
+  window.addEventListener('resize', () => { fitEditor(); fitCanvas(); });
+
+  /* ── WebGL ── */
+  const VS = `attribute vec2 a;\nvoid main(){gl_Position=vec4(a,0,1);}`;
+  const wrapFS = src =>
+    `precision highp float;\nuniform float iTime;\nuniform vec2 iResolution;\nuniform vec2 iMouse;\n${src}\nvoid main(){mainImage(gl_FragColor,gl_FragCoord.xy);}`;
+
+  const canvas   = document.getElementById('glcanvas');
+  const dot      = document.getElementById('dot');
+  const cMsg     = document.getElementById('compile-msg');
+  const errOvl   = document.getElementById('err-overlay');
+  const fpsEl    = document.getElementById('fps');
+  const timeEl   = document.getElementById('info-time');
+  const resEl    = document.getElementById('info-res');
+  const pauseBtn = document.getElementById('pause-btn');
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+  let prog=null, raf=null, t0=performance.now(), pauseOffset=0, paused=false;
+  let mx=0, my=0, frames=0, fpsT=0;
+
+  canvas.addEventListener('mousemove', e => {
+    const r=canvas.getBoundingClientRect(), dpr=devicePixelRatio||1;
+    mx=(e.clientX-r.left)*dpr; my=canvas.height-(e.clientY-r.top)*dpr;
+  });
+
+  function makeShader(type,src){
+    const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){const e=gl.getShaderInfoLog(s);gl.deleteShader(s);throw e;}
+    return s;
+  }
+  function makeProgram(fsSrc){
+    const vs=makeShader(gl.VERTEX_SHADER,VS), fs=makeShader(gl.FRAGMENT_SHADER,wrapFS(fsSrc));
+    const p=gl.createProgram(); gl.attachShader(p,vs); gl.attachShader(p,fs); gl.linkProgram(p);
+    gl.deleteShader(vs); gl.deleteShader(fs);
+    if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
+    return p;
+  }
+  function initQuad(p){
+    const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+    const loc=gl.getAttribLocation(p,'a'); gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  }
+  function resize(){
+    const dpr=devicePixelRatio||1;
+    canvas.width=(canvas.clientWidth*dpr)|0; canvas.height=(canvas.clientHeight*dpr)|0;
+    gl.viewport(0,0,canvas.width,canvas.height);
+    resEl.textContent=canvas.width+' x '+canvas.height;
+  }
+  new ResizeObserver(()=>{ if(prog) resize(); }).observe(document.getElementById('canvas-wrap'));
+
+  function run(code){
+    if(raf){cancelAnimationFrame(raf);raf=null;}
+    errOvl.classList.remove('show');
+    try{
+      if(prog) gl.deleteProgram(prog);
+      prog=makeProgram(code); initQuad(prog); resize();
+      t0=performance.now()-pauseOffset; paused=false;
+      pauseBtn.innerHTML='&#9646;&#9646;';
+      dot.className='ok'; cMsg.className='ok'; cMsg.textContent='compiled ok';
+      loop();
+    }catch(raw){
+      prog=null;
+      const msg=String(raw).replace(/ERROR: \d+:(\d+):/g,(_,n)=>'line '+Math.max(+n-5,1)+':').trim();
+      dot.className='err'; cMsg.className='err'; cMsg.textContent='compile error';
+      errOvl.textContent=msg; errOvl.classList.add('show');
+    }
+  }
+  function loop(){
+    raf=requestAnimationFrame(loop); if(!prog) return;
+    const now=performance.now(), t=(now-t0)/1000;
+    frames++; if(now-fpsT>=1000){fpsEl.textContent=frames+' fps';frames=0;fpsT=now;}
+    timeEl.textContent='t = '+t.toFixed(3)+'s';
+    gl.useProgram(prog);
+    gl.uniform1f(gl.getUniformLocation(prog,'iTime'),t);
+    gl.uniform2f(gl.getUniformLocation(prog,'iResolution'),canvas.width,canvas.height);
+    gl.uniform2f(gl.getUniformLocation(prog,'iMouse'),mx,my);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  }
+
+  /* ── Controls ── */
+  document.getElementById('btn-run').onclick   = ()=>run(cm.getValue());
+  document.getElementById('btn-reset').onclick = ()=>{cm.setValue(DEFAULT_SHADER);run(DEFAULT_SHADER);};
+  document.getElementById('btn-copy').onclick  = ()=>{
+    const text = cm.getValue();
+    if(navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(text).then(showCopied).catch(()=>fallbackCopy(text));
+    } else { fallbackCopy(text); }
+  };
+  function showCopied(){
+    const btn=document.getElementById('btn-copy');
+    btn.textContent='✓ Copied'; btn.style.color='var(--ok)';
+    setTimeout(()=>{btn.textContent='Copy';btn.style.color='';},1800);
+  }
+  function fallbackCopy(text){
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.cssText='position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try{document.execCommand('copy');showCopied();}
+    catch(e){cm.execCommand('selectAll');const b=document.getElementById('btn-copy');b.textContent='Select All ↑';setTimeout(()=>{b.textContent='Copy';},2500);}
+    document.body.removeChild(ta);
+  }
+  pauseBtn.onclick=()=>{
+    if(!prog) return; paused=!paused;
+    if(paused){pauseOffset=performance.now()-t0;cancelAnimationFrame(raf);raf=null;pauseBtn.innerHTML='&#9654;';}
+    else{t0=performance.now()-pauseOffset;pauseBtn.innerHTML='&#9646;&#9646;';loop();}
+  };
+
+  /* ── Boot ── */
+  requestAnimationFrame(()=>{
+    fitEditor();
+    fitCanvas();
+    run(DEFAULT_SHADER);
+    new ResizeObserver(fitEditor).observe(cmWrap);
+    // ResizeObserver fitCanvas đã được đăng ký trong drag resize block ở trên
+    setTimeout(()=>{fitEditor();fitCanvas();cm.refresh();},100);
+    setTimeout(()=>{fitEditor();fitCanvas();cm.refresh();},500);
+  });
+});
+</script>
+</body>
+</html>
